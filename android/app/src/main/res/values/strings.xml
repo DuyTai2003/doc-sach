@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Đọc Sách Nè</string>
+    <string name="title_activity_main">Đọc Sách Nè</string>
+    <string name="package_name">com.duy.docsach</string>
+    <string name="custom_url_scheme">com.duy.docsach</string>
+    <string name="google_oauth_redirect">com.googleusercontent.apps.879904036286-q3mr08o8r0ondm5t5j47r1sve0nd53gc:/oauth2callback</string>
+</resources>

@@ -1,0 +1,11 @@
+{
+  "appId": "com.duy.docsach",
+  "appName": "Đọc Sách Nè",
+  "webDir": "dist",
+
+  "plugins": {
+    "StatusBar": {
+      "overlaysWebView": true
+    }
+  }
+}
