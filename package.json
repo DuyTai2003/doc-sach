@@ -26,36 +26,19 @@
     "win": {
       "target": [
         {
-          "target": "nsis",
-          "arch": ["x64"]
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
         }
       ],
-      "icon": "public/Icon-app 2.png",
-      "forceCodeSigning": false
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "public/Icon-app 2.png",
-      "uninstallerIcon": "public/Icon-app 2.png",
-      "installerHeaderIcon": "public/Icon-app 2.png",
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "Doc Sach Ne"
+      "icon": "public/Icon-app 2.png"
     },
     "files": [
       "dist/**/*",
       "electron/**/*",
       "package.json"
     ]
-  },
-  "scripts": {
-    "dev": "vite",
-    "build": "vite build",
-    "lint": "eslint .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "preview": "vite preview"
   },
   "dependencies": {
     "@capacitor-community/keep-awake": "^8.0.1",
@@ -86,6 +69,7 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.5.0",
     "jsdom": "^29.1.1",
+    "sharp": "^0.34.5",
     "vite": "^8.0.10",
     "vite-plugin-pwa": "^1.3.0",
     "vitest": "^4.1.5",
