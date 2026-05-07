@@ -9,7 +9,7 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg', 'Icon-app 1.png', 'Icon-app 2.png'], // Thêm icon vào đây
+      includeAssets: ['icons.svg', 'Icon-app 1.png', 'Icon-app 2.png'],
       manifest: {
         name: 'Đọc Sách Nè - Doc Sach',
         short_name: 'Đọc Sách',
