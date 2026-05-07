@@ -35,3 +35,7 @@ skills-lock.json
 
 # Temp / research files
 UsersnguyeTempkotatsu-research/
+
+# Electron build output
+dist-electron/
+release/
