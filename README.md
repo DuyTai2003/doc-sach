@@ -32,7 +32,6 @@
 - 🏷️ **Tag-Based Library** — Categories, search, multi-select management
 - 📱 **Rich Reading Experience** — 20+ fonts, vertical scroll, horizontal pagination, pinch-to-zoom
 - 💾 **Offline-First** — IndexedDB persistence, PWA with Service Worker cache
-- ✅ **31 Unit Tests** — Vitest with 100% pass rate
 - 🔁 **CI/CD** — GitHub Actions auto-builds APK on push
 
 ### 🏗️ Architecture
@@ -116,7 +115,6 @@ npm run electron:build # Build Windows .exe
 - 🏷️ **Quản Lý Thư Viện Bằng Tag** — Danh mục, tìm kiếm, chọn nhiều
 - 📱 **Trải Nghiệm Đọc Phong Phú** — 20+ font, cuộn dọc, lật ngang, pinch-to-zoom
 - 💾 **Ưu Tiên Ngoại Tuyến** — IndexedDB lưu trữ, PWA với Service Worker
-- ✅ **31 Unit Tests** — Vitest, tỉ lệ đậu 100%
 - 🔁 **CI/CD** — GitHub Actions tự động build APK mỗi lần push
 
 ### 🏗️ Kiến Trúc
@@ -183,7 +181,6 @@ npm run electron:dev # Chế độ dev desktop Windows
 - 🏷️ **标签式书架管理** — 分类、搜索、多选管理
 - 📱 **丰富阅读体验** — 20+字体、纵向滚动、横向翻页、双指缩放
 - 💾 **离线优先** — IndexedDB 持久化存储，PWA Service Worker 缓存
-- ✅ **31个单元测试** — Vitest，100% 通过率
 - 🔁 **CI/CD** — GitHub Actions 自动构建 APK
 
 ### 🏗️ 架构
@@ -250,7 +247,6 @@ npm run electron:dev # Windows 桌面开发模式
 - 🏷️ **標籤式書櫃管理** — 分類、搜尋、多選管理
 - 📱 **豐富閱讀體驗** — 20+字型、縱向捲動、橫向翻頁、雙指縮放
 - 💾 **離線優先** — IndexedDB 持久化儲存，PWA Service Worker 快取
-- ✅ **31個單元測試** — Vitest，100% 通過率
 - 🔁 **CI/CD** — GitHub Actions 自動建構 APK
 
 ### 🏗️ 架構
