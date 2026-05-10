@@ -104,6 +104,19 @@ export function getDropStyle(ac) {
   }
 }
 
+// Default dropdown style (dark theme)
+export const DROP_STYLE = {
+  container: {
+    background: '#1c1c28',
+    border: '1px solid rgba(255,255,255,0.15)',
+    borderRadius: 6,
+    boxShadow: '0 8px 32px rgba(0,0,0,0.65)'
+  },
+  item: { padding: '8px 10px', cursor: 'pointer', fontSize: 12 },
+  itemNormal: { background: '#1c1c28', color: '#d0d0d0' },
+  itemSelected: { background: 'rgba(255,255,255,0.1)', color: '#f0f0f0', fontWeight: 'bold' }
+}
+
 export const TAG_COLORS = [
   '#ef4444', '#f97316', '#f59e0b', '#eab308', '#84cc16', '#22c55e',
   '#10b981', '#14b8a6', '#06b6d4', '#0ea5e9', '#3b82f6', '#6366f1',

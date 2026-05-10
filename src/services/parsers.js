@@ -122,7 +122,7 @@ export async function parseTxt(buf, t) {
       }
       if (line.length < 100 && chapRegex.test(line)) {
           if (currentHtml.trim()) {
-              chs.push({ title: currentTitle, html: `<div style="text-align:justify;">${currentHtml}</div>` });
+              chs.push({ title: currentTitle, type: 'html', content: `<div style="text-align:justify;">${currentHtml}</div>` });
               currentHtml = "";
           }
           currentTitle = line;
@@ -133,7 +133,7 @@ export async function parseTxt(buf, t) {
   if (currentHtml.trim()) {
       chs.push({ title: currentTitle, type: 'html', content: `<div style="text-align:justify;">${currentHtml}</div>` });
   }
-  if (chs.length === 1 && chs[0].html.length > 50000) {
+  if (chs.length === 1 && chs[0].content && chs[0].content.length > 50000) {
      const chunks = []; for(let i=0; i<lines.length; i+=500) chunks.push(lines.slice(i, i+500).join('\n'));
      return chunks.map((chunk, idx) => ({ title: `${t.chapterTitle} ${idx+1}`, type: 'html', content: `<div style="text-align:justify;">${chunk.split('\n').map(l => l?'<p style="margin-bottom:0.5em;text-indent:0.6em;text-align:justify;">'+l+'</p>':'<br/>').join('')}</div>` }));
   }

@@ -1,65 +1,232 @@
-import { useCallback, useRef, useEffect, useState } from 'react'
-import { useAppContext } from './context/AppContext.jsx'
-import { Btn, Dropdown } from './components/BtnDropdown.jsx'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import * as JSZip from 'jszip'
 import * as pdfjsLib from 'pdfjs-dist'
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import { KeepAwake } from '@capacitor-community/keep-awake';
-import { THEMES, FONTS, APP_THEMES, getDropStyle, TAG_COLORS, randomTagColor } from './themes.js'
+import { THEMES, FONTS, APP_THEMES, DROP_STYLE, TAG_COLORS, randomTagColor } from './themes.js'
+import TRANSLATIONS from './translations.js'
 import { openDB, dbGet, dbGetAll, dbPut, dbDelete, dbUpdateBook, removeCategoryFromAllBooks, exportData, importData } from './db.js'
-import { extractEpubCover, extractPdfCover, extractZipCover } from './services/covers.js'
-import { detectEpubGenres, parseEpub, parsePdf, parseZip, parseTxt } from './services/parsers.js'
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.mjs',
   import.meta.url
 ).toString()
 
-export default function App() {
-  const {
-    books, setBooks,
-    currentBook, setCurrentBook,
-    chapters, setChapters,
-    curChap, setCurChap,
-    progressMap, setProgressMap,
-    view, setView,
-    loading, setLoading,
-    loadMsg, setLoadMsg,
-    isMenuOpen, setIsMenuOpen,
-    isFullscreen, setIsFullscreen,
-    settingsLoaded, setSettingsLoaded,
-    theme, setTheme,
-    font, setFont,
-    fontSize, setFontSize,
-    lineH, setLineH,
-    readMode, setReadMode,
-    tapConfig, setTapConfig,
-    lang, setLang,
-    appTheme, setAppTheme,
-    showSidebar, setShowSidebar,
-    categories, setCategories,
-    selectedCategoryId, setSelectedCategoryId,
-    isSelectMode, setIsSelectMode,
-    selectedBookIds, setSelectedBookIds,
-    searchQuery, setSearchQuery,
-    showTagModal, setShowTagModal,
-    editingTag, setEditingTag,
-    showBulkTagModal, setShowBulkTagModal,
-    showStats, setShowStats,
-    tagContextMenu, setTagContextMenu,
-    showChapterGrid, setShowChapterGrid,
-    showThemeDropdown, setShowThemeDropdown,
-    showReadThemeDropdown, setShowReadThemeDropdown,
-    chapInput, setChapInput,
-    touchStartX, setTouchStartX,
-    touchStartY, setTouchStartY,
-    scrollRef, pageRef, chapterListRef,
-    clickTimeoutRef, longPressRef, fileInputRef,
-    isFullscreenRef, viewRef, isMenuOpenRef,
-    t
-  } = useAppContext()
+async function extractEpubCover(buf) {
+  try {
+    const zip = await JSZip.loadAsync(buf)
+    const p = new DOMParser()
+    const cxml = await zip.file('META-INF/container.xml').async('string')
+    const cdoc = p.parseFromString(cxml, 'application/xml')
+    const opfPath = cdoc.querySelector('rootfile').getAttribute('full-path')
+    const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : ''
+    const opfXml = await zip.file(opfPath).async('string')
+    const opfDoc = p.parseFromString(opfXml, 'application/xml')
 
-  // --- SCROLL TO CURRENT CHAPTER WHEN CHAPTER GRID OPENS ---
+    let coverHref = ''
+    const metaCover = opfDoc.querySelector('meta[name="cover"]')
+    if (metaCover) {
+      const coverId = metaCover.getAttribute('content')
+      const item = opfDoc.querySelector(`manifest item[id="${coverId}"]`)
+      if (item) coverHref = item.getAttribute('href')
+    }
+    if (!coverHref) {
+      const coverItem = Array.from(opfDoc.querySelectorAll('manifest item')).find(i => /cover\.(jpg|jpeg|png)$/i.test(i.getAttribute('href')))
+      if (coverItem) coverHref = coverItem.getAttribute('href')
+    }
+    if (coverHref) {
+      let cFile = zip.file(opfDir + coverHref) || zip.file(decodeURIComponent(opfDir + coverHref))
+      if (!cFile) cFile = zip.file(coverHref)
+      if (cFile) {
+        const b64 = await cFile.async('base64')
+        const ext = coverHref.split('.').pop().toLowerCase()
+        const mime = ext==='png'?'image/png':'image/jpeg'
+        return `data:${mime};base64,${b64}`
+      }
+    }
+  } catch(e) { console.error("Cover extract error:", e) }
+  return null
+}
+
+async function extractPdfCover(buf) {
+  try {
+    const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise
+    const page = await pdf.getPage(1)
+    const viewport = page.getViewport({ scale: 0.5 })
+    const canvas = document.createElement('canvas')
+    canvas.width = viewport.width; canvas.height = viewport.height
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise
+    return canvas.toDataURL('image/jpeg', 0.8)
+  } catch(e) { console.error("Cover extract error:", e) }
+  return null
+}
+
+async function extractZipCover(buf) {
+  try {
+    const zip = await JSZip.loadAsync(buf)
+    const imgFiles = Object.values(zip.files)
+      .filter(f => !f.dir && /\.(png|jpe?g|webp)$/i.test(f.name))
+      .sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true}))
+    if (imgFiles.length > 0) {
+      const b64 = await imgFiles[0].async('base64')
+      const ext = imgFiles[0].name.split('.').pop().toLowerCase()
+      const mime = ext==='png'?'image/png':ext==='webp'?'image/webp':'image/jpeg'
+      return `data:${mime};base64,${b64}`
+    }
+  } catch(e) { console.error("Cover extract error:", e) }
+  return null
+}
+
+const Btn = ({ children, onClick, disabled, style }) => (
+  <button onClick={onClick} disabled={disabled} style={{ ...style, opacity: disabled ? .25 : 1 }}>{children}</button>
+)
+
+const Dropdown = ({ value, onChange, options, ac, btnStyle }) => {
+  const [open, setOpen] = useState(false)
+  const selected = options.find(o => o.value === value)
+  return (
+    <div style={{ position: 'relative', width: '100%' }}>
+      <div
+        onClick={() => setOpen(!open)}
+        style={{...btnStyle, width: '100%', display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', userSelect: 'none', textAlign: 'left' }}
+      >
+        <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{selected?.label || value}</span>
+        <span style={{ fontSize: 10, opacity: 0.5, flexShrink: 0 }}>▼</span>
+      </div>
+      {open && (
+        <>
+          <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setOpen(false)} />
+          <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, ...DROP_STYLE.container, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+            {options.map(o => (
+              <div
+                key={o.value}
+                onClick={() => { onChange(o.value); setOpen(false); }}
+                style={{ ...DROP_STYLE.item, ...(value === o.value ? DROP_STYLE.itemSelected : DROP_STYLE.itemNormal) }}
+              >
+                {o.label}
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}
+
+export default function App() {
+  const [books, setBooks]             = useState([])
+  const [currentBook, setCurrentBook] = useState(null)
+  const [chapters, setChapters]       = useState([])
+  const [curChap, setCurChap]         = useState(0)
+  const [loading, setLoading]         = useState(false)
+  const [loadMsg, setLoadMsg]         = useState('')
+  const [theme, setTheme]             = useState('sepia')
+  const [font, setFont]               = useState('Arial,sans-serif')
+  const [fontSize, setFontSize]       = useState(18)
+  const [lineH, setLineH]             = useState(1.85)
+  const [lang, setLang] = useState('vi')
+  const [appTheme, setAppTheme] = useState('navy')
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const [tapConfig, setTapConfig] = useState(2)
+  const [readMode, setReadMode] = useState('vertical')
+  const [isMenuOpen, setIsMenuOpen] = useState(false)
+  const t = TRANSLATIONS[lang]
+  const [showSidebar, setShowSidebar] = useState(true)
+  const [showChapterGrid, setShowChapterGrid] = useState(false)
+  const [showThemeDropdown, setShowThemeDropdown] = useState(false)
+  const [showReadThemeDropdown, setShowReadThemeDropdown] = useState(false)
+  const [chapInput, setChapInput]     = useState('')
+  const [view, setView]               = useState('welcome')
+  const [settingsLoaded, setSettingsLoaded] = useState(false)
+  const [progressMap, setProgressMap] = useState({})
+  const [touchStartX, setTouchStartX] = useState(null)
+  const [touchStartY, setTouchStartY] = useState(null)
+
+  // --- NEW STATE: Tags & Categories ---
+  const [categories, setCategories] = useState([])
+  const [selectedCategoryId, setSelectedCategoryId] = useState('all')
+  const [isSelectMode, setIsSelectMode] = useState(false)
+  const [selectedBookIds, setSelectedBookIds] = useState(new Set())
+  const [searchQuery, setSearchQuery] = useState('')
+  const [showTagModal, setShowTagModal] = useState(false)
+  const [editingTag, setEditingTag] = useState(null)
+  const [showBulkTagModal, setShowBulkTagModal] = useState(false)
+  const [showStats, setShowStats] = useState(false)
+  const [tagContextMenu, setTagContextMenu] = useState(null) // { tagId, x, y }
+
+  const scrollRef = useRef(null)
+  const pageRef   = useRef(null)
+  const chapterListRef = useRef(null)
+  const clickTimeoutRef = useRef(null)
+  const longPressRef = useRef(null)
+
+  const isFullscreenRef = useRef(isFullscreen)
+  const viewRef = useRef(view)
+  const isMenuOpenRef = useRef(isMenuOpen)
+
+  useEffect(() => { isFullscreenRef.current = isFullscreen }, [isFullscreen])
+  useEffect(() => { viewRef.current = view }, [view])
+  useEffect(() => { isMenuOpenRef.current = isMenuOpen }, [isMenuOpen])
+
+  useEffect(() => {
+    let listener = null;
+    const setupBackButton = async () => {
+      try {
+        const { App: CapApp } = await import('@capacitor/app');
+        listener = await CapApp.addListener('backButton', async () => {
+          if (isMenuOpenRef.current) {
+            setIsMenuOpen(false)
+          } else if (isFullscreenRef.current) {
+            setIsFullscreen(false)
+            try {
+              const { StatusBar } = await import('@capacitor/status-bar');
+              await StatusBar.show();
+            } catch (e) {}
+          } else if (viewRef.current === 'reader') {
+            setView('library')
+          } else {
+            CapApp.exitApp()
+          }
+        });
+      } catch (e) {}
+    };
+    setupBackButton();
+    return () => {
+      if (listener) listener.remove();
+    }
+  }, []);
+
+  useEffect(() => {
+    ;(async () => {
+      const s = await dbGet('settings', 'ui')
+      if (s) {
+        setTheme(s.theme || 'sepia')
+        setFont(s.font || 'Arial,sans-serif')
+        setFontSize(s.fontSize || 18)
+        setLineH(s.lineH || 1.85)
+        if (s.lang) setLang(s.lang)
+        if (s.tapConfig) setTapConfig(s.tapConfig)
+        if (s.appTheme) setAppTheme(s.appTheme)
+        if (s.readMode) setReadMode(s.readMode)
+      }
+      setSettingsLoaded(true)
+      const bks = await dbGetAll('books')
+      setBooks(bks)
+      const progs = await dbGetAll('progress')
+      const pMap = {}
+      progs.forEach(p => { pMap[p.bookId] = p })
+      setProgressMap(pMap)
+      const cats = await dbGetAll('categories')
+      setCategories(cats)
+      if (bks.length > 0) setView('library')
+    })()
+  }, [])
+
+  useEffect(() => {
+    if (!settingsLoaded) return
+    dbPut('settings', { key: 'ui', theme, font, fontSize, lineH, lang, tapConfig, appTheme, readMode })
+  }, [theme, font, fontSize, lineH, lang, tapConfig, appTheme, readMode, settingsLoaded])
+
   useEffect(() => {
     if (showChapterGrid && chapterListRef.current) {
       const activeEl = chapterListRef.current.children[curChap];
@@ -67,7 +234,7 @@ export default function App() {
         activeEl.scrollIntoView({ block: 'center', behavior: 'smooth' });
       }
     }
-  }, [showChapterGrid, curChap, chapterListRef])
+  }, [showChapterGrid, curChap]);
 
   // --- TAG OPERATIONS ---
   async function createTag(name, color) {
@@ -215,6 +382,33 @@ export default function App() {
   })
 
   // --- HANDLE FILE ---
+  // --- AUTO-DETECT EPUB GENRE ---
+  async function detectEpubGenres(buf) {
+    try {
+      const zip = await JSZip.loadAsync(buf)
+      const p = new DOMParser()
+      const cxml = await zip.file('META-INF/container.xml').async('string')
+      const cdoc = p.parseFromString(cxml, 'application/xml')
+      const opfPath = cdoc.querySelector('rootfile').getAttribute('full-path')
+      const opfDir = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : ''
+      const opfXml = await zip.file(opfPath).async('string')
+      const opfDoc = p.parseFromString(opfXml, 'application/xml')
+
+      const genres = []
+      // Dublin Core subjects
+      opfDoc.querySelectorAll('dc\\:subject, subject').forEach(el => {
+        const v = el.textContent?.trim()
+        if (v && v.length < 50 && !/^\d+$/.test(v)) genres.push(v)
+      })
+      // Custom meta genre/type tags (Calibre, Sigil...)
+      opfDoc.querySelectorAll('meta[name="genre"], meta[property="genre"], meta[name="calibre:genre"]').forEach(el => {
+        const v = el.getAttribute('content')?.trim()
+        if (v && v.length < 50 && !genres.includes(v)) genres.push(v)
+      })
+      return [...new Set(genres)] // dedupe
+    } catch(e) { return [] }
+  }
+
   async function findOrCreateTags(genreNames) {
     const currentCats = await dbGetAll('categories')
     const tagIds = []
@@ -237,12 +431,12 @@ export default function App() {
   async function handleFile(file) {
     if (!file) return
     const ext = file.name.split('.').pop().toLowerCase()
-    setLoading(true); setLoadMsg(t.reading)
+    setLoading(true); setLoadMsg(TRANSLATIONS[lang].reading)
     try {
-      const buf = await file.arrayBuffer();
+      const buf = await file.arrayBuffer()
       let cover = null;
       if (ext === 'epub') cover = await extractEpubCover(buf);
-      else if (ext === 'pdf') cover = await extractPdfCover(buf, pdfjsLib);
+      else if (ext === 'pdf') cover = await extractPdfCover(buf);
       else if (ext === 'zip' || ext === 'cbz') cover = await extractZipCover(buf);
 
       // Auto-detect genres from EPUB metadata
@@ -260,20 +454,20 @@ export default function App() {
       const bks = await dbGetAll('books')
       setBooks(bks)
       await openBook({ ...bookData, id })
-    } catch(e) { alert(t.err + e.message) }
+    } catch(e) { alert(TRANSLATIONS[lang].err + e.message) }
     setLoading(false)
   }
 
   async function openBook(book) {
     setCurrentBook(book)
-    setLoading(true); setLoadMsg(t.opening)
+    setLoading(true); setLoadMsg(TRANSLATIONS[lang].opening)
     setView('reader')
     try {
       let chs = []
-      if (book.ext === 'epub') chs = await parseEpub(book.buf, t)
-      else if (book.ext === 'pdf') chs = await parsePdf(book.buf, t)
+      if (book.ext === 'epub') chs = await parseEpub(book.buf)
+      else if (book.ext === 'pdf') chs = await parsePdf(book.buf)
       else if (book.ext === 'zip' || book.ext === 'cbz') chs = await parseZip(book.buf, book.name)
-      else if (book.ext === 'txt') chs = await parseTxt(book.buf, t)
+      else if (book.ext === 'txt') chs = await parseTxt(book.buf)
       setChapters(chs)
       await dbPut('books', { ...book, totalChapters: chs.length })
       const bks = await dbGetAll('books')
@@ -282,8 +476,123 @@ export default function App() {
       const startChap = prog?.chapter || 0
       setCurChap(startChap)
       setProgressMap(prev => ({ ...prev, [book.id]: { chapter: startChap, totalChapters: chs.length } }))
-    } catch(e) { alert(t.err + e.message) }
+    } catch(e) { alert(TRANSLATIONS[lang].err + e.message) }
     setLoading(false)
+  }
+
+  async function parseEpub(buf) {
+    const zip = await JSZip.loadAsync(buf)
+    const p   = new DOMParser()
+    const cxml = await zip.file('META-INF/container.xml').async('string')
+    const cdoc = p.parseFromString(cxml, 'application/xml')
+    const opfPath = cdoc.querySelector('rootfile').getAttribute('full-path')
+    const opfDir  = opfPath.includes('/') ? opfPath.substring(0, opfPath.lastIndexOf('/') + 1) : ''
+    const opfXml  = await zip.file(opfPath).async('string')
+    const opfDoc  = p.parseFromString(opfXml, 'application/xml')
+    const mf = {}
+    opfDoc.querySelectorAll('manifest item').forEach(it => {
+      mf[it.getAttribute('id')] = { href: it.getAttribute('href'), type: it.getAttribute('media-type') }
+    })
+    const spine = Array.from(opfDoc.querySelectorAll('spine itemref')).map(r => r.getAttribute('idref'))
+    let ncx = {}
+    const ncxId = opfDoc.querySelector('spine')?.getAttribute('toc')
+    if (ncxId && mf[ncxId]) {
+      try {
+        const nx = await zip.file(opfDir + mf[ncxId].href)?.async('string')
+        const nd = p.parseFromString(nx, 'application/xml')
+        nd.querySelectorAll('navPoint').forEach(np => {
+          const src = np.querySelector('content')?.getAttribute('src')?.split('#')[0]
+          const t   = np.querySelector('navLabel text')?.textContent?.trim()
+          if (src && t) ncx[src] = t
+        })
+      } catch(e) {}
+    }
+    const chs = []
+    for (const id of spine) {
+      const item = mf[id]
+      if (!item || !item.href.match(/\.x?html?$/i)) continue
+      try {
+        const html  = await zip.file(opfDir + item.href)?.async('string')
+        if (!html) continue
+        const chDoc = p.parseFromString(html, 'text/html')
+        for (const img of chDoc.querySelectorAll('img')) {
+          const src = img.getAttribute('src'); if (!src) continue
+          try {
+            const candidates = [opfDir+src, opfDir+src.replace(/^\.\.\//,''), src.replace(/^\.\.\//,''), src]
+            let ifile = null
+            for (const c of candidates) { ifile = zip.file(decodeURIComponent(c)); if (ifile) break }
+            if (ifile) {
+              const b64  = await ifile.async('base64')
+              const ext2 = src.split('.').pop().toLowerCase()
+              const mime = ext2==='png'?'image/png':ext2==='gif'?'image/gif':ext2==='svg'?'image/svg+xml':'image/jpeg'
+              img.src = `data:${mime};base64,${b64}`
+            }
+          } catch(e) {}
+        }
+        chDoc.querySelectorAll('style,link[rel=stylesheet]').forEach(el => el.remove())
+        const title = ncx[item.href] || chDoc.querySelector('h1,h2,h3')?.textContent?.trim() || `${TRANSLATIONS[lang].chapterTitle} ${chs.length+1}`
+        chs.push({ title, type: 'html', content: chDoc.body?.innerHTML || html })
+      } catch(e) {}
+    }
+    return chs
+  }
+
+  async function parsePdf(buf) {
+    const pdf = await pdfjsLib.getDocument({ data: buf.slice(0) }).promise
+    const chs = []
+    for (let i = 0; i < pdf.numPages; i += 5) {
+      const fr = i + 1, to = Math.min(i + 5, pdf.numPages)
+      chs.push({ title: `${TRANSLATIONS[lang].pageTitle} ${fr}–${to}`, type: 'pdf', from: fr, to, pdf })
+    }
+    return chs
+  }
+
+  async function parseZip(buf, bookName) {
+    const zip = await JSZip.loadAsync(buf)
+    const imgFiles = Object.values(zip.files)
+      .filter(f => !f.dir && /\.(png|jpe?g|webp|gif)$/i.test(f.name))
+      .sort((a,b) => a.name.localeCompare(b.name, undefined, {numeric:true}))
+
+    const urls = []
+    for(let i = 0; i < imgFiles.length; i++) {
+      const blob = await imgFiles[i].async('blob')
+      urls.push(URL.createObjectURL(blob))
+    }
+    return [{ title: bookName || 'Manga', type: 'manga', urls }]
+  }
+
+  async function parseTxt(buf) {
+    const text = new TextDecoder('utf-8').decode(buf);
+    const lines = text.split(/\r?\n/);
+    const chs = [];
+    let currentTitle = `${TRANSLATIONS[lang].chapterTitle} 1`;
+    let currentHtml = "";
+    const chapRegex = /^(chương|chapter|đệ|hồi|phần)\s+[\d\w]+/i;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) {
+          currentHtml += "<br/>";
+          continue;
+        }
+        if (line.length < 100 && chapRegex.test(line)) {
+            if (currentHtml.trim()) {
+                chs.push({ title: currentTitle, type: 'html', content: `<div style="text-align:justify;">${currentHtml}</div>` });
+                currentHtml = "";
+            }
+            currentTitle = line;
+        } else {
+            currentHtml += `<p style="margin-bottom:0.5em;text-indent:0.6em;text-align:justify;">${line}</p>`;
+        }
+    }
+    if (currentHtml.trim()) {
+        chs.push({ title: currentTitle, type: 'html', content: `<div style="text-align:justify;">${currentHtml}</div>` });
+    }
+    if (chs.length === 1 && chs[0].content && chs[0].content.length > 50000) {
+       const chunks = []; for(let i=0; i<lines.length; i+=500) chunks.push(lines.slice(i, i+500).join('\n'));
+       return chunks.map((chunk, idx) => ({ title: `${TRANSLATIONS[lang].chapterTitle} ${idx+1}`, type: 'html', content: `<div style="text-align:justify;">${chunk.split('\n').map(l => l?'<p style="margin-bottom:0.5em;text-indent:0.6em;text-align:justify;">'+l+'</p>':'<br/>').join('')}</div>` }));
+    }
+    return chs;
   }
 
   const goChapter = useCallback(async (idx, chs_arg, isPrev = false) => {
@@ -341,7 +650,7 @@ export default function App() {
 
   async function deleteBook(id, e) {
     e.stopPropagation()
-    if (!confirm(t.delConfirm)) return
+    if (!confirm(TRANSLATIONS[lang].delConfirm)) return
     await dbDelete('books', id)
     await dbDelete('progress', id)
     const bks = await dbGetAll('books')
@@ -682,17 +991,17 @@ export default function App() {
               position: 'fixed', zIndex: 2001,
               left: Math.min(tagContextMenu.x, window.innerWidth - 180),
               top: Math.min(tagContextMenu.y, window.innerHeight - 160),
-              ...getDropStyle(ac).container, padding: '4px 0', minWidth: 160
+              ...DROP_STYLE.container, padding: '4px 0', minWidth: 160
             }}>
-              <div style={{ ...getDropStyle(ac).item, ...getDropStyle(ac).itemNormal }}
+              <div style={{ ...DROP_STYLE.item, ...DROP_STYLE.itemNormal }}
                 onClick={() => { setEditingTag(cat); setShowTagModal(true); setTagContextMenu(null); }}>
                 ✏️ {t.editTag}
               </div>
-              <div style={{ ...getDropStyle(ac).item, ...getDropStyle(ac).itemNormal }}
+              <div style={{ ...DROP_STYLE.item, ...DROP_STYLE.itemNormal }}
                 onClick={() => { togglePinTag(cat.id); setTagContextMenu(null); }}>
                 📌 {cat.pinned ? t.unpinTag : t.pinTag}
               </div>
-              <div style={{ ...getDropStyle(ac).item, color: '#ef4444' }}
+              <div style={{ ...DROP_STYLE.item, color: '#ef4444' }}
                 onClick={() => { deleteTag(cat.id); }}>
                 🗑️ {t.deleteTag}
               </div>
@@ -735,8 +1044,10 @@ export default function App() {
         {/* Nav buttons */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8, flexShrink: 0 }}>
           <Btn style={btnStyle} onClick={() => { setView('library'); setIsMenuOpen(false); }}>{t.library}</Btn>
-          <Btn style={btnStyle} onClick={() => { fileInputRef.current?.click(); setIsMenuOpen(false); }}>{t.add}</Btn>
-          <input type="file" ref={fileInputRef} style={{ display:'none' }} onChange={e => { handleFile(e.target.files[0]); setIsMenuOpen(false); }}/>
+          <label style={{...btnStyle, margin: 0, textAlign: 'center'}}>
+            {t.add}
+            <input type="file" accept=".epub,.pdf,.zip,.cbz,.txt" style={{ display:'none' }} onChange={e => { handleFile(e.target.files[0]); setIsMenuOpen(false); }}/>
+          </label>
         </div>
 
         {/* Categories section in menu */}
@@ -854,12 +1165,12 @@ export default function App() {
           {showReadThemeDropdown && (
             <>
               <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setShowReadThemeDropdown(false)} />
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, ...getDropStyle(ac).container, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, ...DROP_STYLE.container, maxHeight: 200, overflowY: 'auto', marginTop: 4 }}>
                 {Object.entries(THEMES).map(([k,v]) => (
                   <div
                     key={k}
                     onClick={() => { setTheme(k); setShowReadThemeDropdown(false); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, ...getDropStyle(ac).item, ...(theme === k ? getDropStyle(ac).itemSelected : getDropStyle(ac).itemNormal) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, ...DROP_STYLE.item, ...(theme === k ? DROP_STYLE.itemSelected : DROP_STYLE.itemNormal) }}
                   >
                     <span style={{
                       width: 20, height: 20, borderRadius: 4, flexShrink: 0,
@@ -908,12 +1219,12 @@ export default function App() {
           {showThemeDropdown && (
             <>
               <div style={{ position: 'fixed', inset: 0, zIndex: 1 }} onClick={() => setShowThemeDropdown(false)} />
-              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, ...getDropStyle(ac).container, maxHeight: 220, overflowY: 'auto', marginTop: 4 }}>
+              <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, ...DROP_STYLE.container, maxHeight: 220, overflowY: 'auto', marginTop: 4 }}>
                 {Object.keys(APP_THEMES).map(k => (
                   <div
                     key={k}
                     onClick={() => { setAppTheme(k); setShowThemeDropdown(false); }}
-                    style={{ display: 'flex', alignItems: 'center', gap: 8, ...getDropStyle(ac).item, ...(appTheme === k ? getDropStyle(ac).itemSelected : getDropStyle(ac).itemNormal) }}
+                    style={{ display: 'flex', alignItems: 'center', gap: 8, ...DROP_STYLE.item, ...(appTheme === k ? DROP_STYLE.itemSelected : DROP_STYLE.itemNormal) }}
                   >
                     <span style={{
                       width: 20, height: 20, borderRadius: 4, flexShrink: 0,
@@ -1486,9 +1797,9 @@ export default function App() {
         }
         return <TagForm />
       })()}
-
+3
       {/* Bulk Tag Assign Modal */}
-      {showBulkTagModal && (
+ 222     {showBulkTagModal && (
         <>
           <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 3000 }} onClick={() => setShowBulkTagModal(false)} />
           <div style={{
@@ -1553,6 +1864,7 @@ export default function App() {
       )}
 
       <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Bangers&family=Fira+Code&family=Inter&family=JetBrains+Mono&family=Merriweather&family=Montserrat&family=Noto+Sans+SC&family=Noto+Sans+TC&family=Noto+Serif+SC&family=Noto+Serif+TC&family=Open+Sans&family=Patrick+Hand&family=Playfair+Display&family=Roboto&display=swap');
         @keyframes spin { to { transform: rotate(360deg) } }
         * { box-sizing: border-box; margin: 0; padding: 0; }
         ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -1584,7 +1896,6 @@ export default function App() {
           background: rgba(255, 255, 255, 0.1);
         }
       `}</style>
-
     </div>
 
   )
