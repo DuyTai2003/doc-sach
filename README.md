@@ -12,7 +12,7 @@
 [![Tests](https://img.shields.io/badge/tests-31%2F31%20passed-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
-### 🌐 Live Demo: [https://doc-sach-ne.netlify.app](https://doc-sach-ne.netlify.app)
+### 🌐 Live Demo: [[https://doc-sach-ne.netlify.app](https://doc-sach-ne.netlify.app](https://duy-readbook.netlify.app/))
 
 </div>
 
