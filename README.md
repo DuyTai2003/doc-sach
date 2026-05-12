@@ -13,7 +13,14 @@
 [![License](https://img.shields.io/badge/license-MIT-green)]()
 
 ### 🌐 Live Demo: [https://duy-readbook.netlify.app](https://duy-readbook.netlify.app)
+
 </div>
+
+## 📸 Preview / Xem Trước
+
+| 📚 Library / Thư Viện | 📖 Reader / Đọc Sách |
+|:---:|:---:|
+| ![Library View](./public/1.png) | ![Reader View](./public/2.png) |
 
 ---
 
