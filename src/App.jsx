@@ -125,7 +125,7 @@ export default function App() {
   const [fontSize, setFontSize]       = useState(18)
   const [lineH, setLineH]             = useState(1.85)
   const [lang, setLang] = useState('vi')
-  const [appTheme, setAppTheme] = useState('navy')
+  const [appTheme, setAppTheme] = useState('warmCream')
   const [isFullscreen, setIsFullscreen] = useState(false)
   const [tapConfig, setTapConfig] = useState(2)
   const [readMode, setReadMode] = useState('vertical')
